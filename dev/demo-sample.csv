@@ -1,0 +1,5 @@
+dataset,method,seed,split,metric,value,config,commit,note
+ECG200,MiniRocket,0,TEST-v1,accuracy,0.88,base.yaml,c1,
+ECG200,Router-25,0,TEST-v1,accuracy,0.91,router.yaml,c2,
+ECG200,MiniRocket,1,TEST-v1,accuracy,0.87,base.yaml,c1,
+ECG200,Router-25,1,TEST-v1,accuracy,0.90,router.yaml,c2,

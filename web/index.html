@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="theme-color" content="#121d37">
+<meta name="description" content="有据 · 可追溯科研工作台（ResearchTrace）：让每一句科研结论都有据可查。管理课题、文献、实验运行、对照证据与论文草稿，数据按账号保存在云端。">
+<title>有据 · 可追溯科研工作台</title>
+<link rel="stylesheet" href="assets/app.css">
+</head>
+<body>
+<a class="skip-link" href="#main">跳到工作区</a>
+<div class="shell">
+  <aside class="sidebar">
+    <div class="brand"><span class="brand-mark" aria-hidden="true"><i></i><i></i><i></i></span><div><strong>有据</strong><small>可追溯科研工作台</small></div></div>
+    <div class="side-project">
+      <label for="project-choice">当前课题</label>
+      <select id="project-choice"></select>
+      <button class="text-button create-project" type="button" data-action="new-project">＋ 新建课题</button>
+    </div>
+    <div class="side-navigation"><div class="nav-heading" aria-hidden="true">研究流程</div><nav id="navigation" aria-label="科研模块"></nav></div>
+    <div class="side-footer"><span class="storage-dot" aria-hidden="true"></span><span id="storage-state">正在连接云端…</span><button id="storage-retry" class="text-button" type="button" data-action="retry-save" hidden>重试</button><button id="storage-reload" class="text-button" type="button" data-action="reload-cloud" hidden>重新加载</button><button id="storage-login" class="text-button" type="button" data-action="goto-login" hidden>登录</button></div>
+  </aside>
+  <main id="main" tabindex="-1">
+    <div id="demo-banner" class="demo-banner" role="status" hidden><span><strong>演示模式</strong> · 独立样例课题，改动只保存在本浏览器，不会进入任何账号。</span><button class="button primary" type="button" data-action="goto-login">登录保存我的课题</button></div>
+    <header class="topbar">
+      <div class="breadcrumb"><span class="breadcrumb-mark" aria-hidden="true"></span><span id="project-crumb"></span><span class="breadcrumb-divider" aria-hidden="true">/</span><strong id="section-crumb"></strong></div>
+      <div class="top-actions"><button class="quick-trigger" type="button" data-action="open-search"><span class="search-icon" aria-hidden="true"></span><span>搜索</span><kbd id="search-shortcut" aria-hidden="true">Ctrl K</kbd></button><button class="button ghost" type="button" data-action="backup-project">备份课题</button><button class="button ghost" type="button" data-action="restore-project">导入备份</button><button class="button ghost theme-button" id="theme-button" type="button" data-action="toggle-theme" aria-label="深色模式" aria-pressed="false"><span aria-hidden="true">◐</span><span>深色</span></button></div>
+    </header>
+    <div class="content" id="content"></div>
+  </main>
+</div>
+<dialog id="editor" aria-labelledby="editor-title">
+  <form id="editor-form">
+    <header class="modal-head"><h2 id="editor-title"></h2><button class="icon-button" type="button" data-action="close-dialog" aria-label="关闭">×</button></header>
+    <div class="modal-body" id="editor-fields"></div>
+    <div id="form-error" role="alert"></div>
+    <footer class="modal-actions"><button class="button ghost" type="button" data-action="close-dialog">取消</button><button class="button primary" type="submit" id="editor-submit">保存</button></footer>
+  </form>
+</dialog>
+<dialog id="quick-search" aria-labelledby="quick-title">
+  <header class="modal-head"><h2 id="quick-title">搜索当前课题</h2><button class="icon-button" type="button" data-action="close-search" aria-label="关闭搜索">×</button></header>
+  <div class="quick-field"><span class="search-icon" aria-hidden="true"></span><input id="quick-query" type="search" autocomplete="off" aria-label="搜索模块、文献和证据" placeholder="查找模块、文献和实验结果"></div>
+  <div id="quick-results" aria-label="搜索结果"></div>
+</dialog>
+<dialog id="csv-preview" aria-labelledby="csv-title">
+  <header class="modal-head"><div><h2 id="csv-title">CSV 导入预览</h2><p class="meta" id="csv-filename"></p></div><button class="icon-button" type="button" data-action="close-csv" aria-label="关闭导入预览">×</button></header>
+  <div id="csv-content" class="csv-content"></div>
+  <footer class="modal-actions csv-actions"><p id="csv-message" class="meta" aria-live="polite"></p><div class="actions"><button class="button ghost" type="button" data-action="close-csv">取消</button><button class="button primary" type="button" data-action="confirm-csv" id="csv-confirm">确认导入</button></div></footer>
+</dialog>
+<input id="file-picker" type="file" hidden>
+<div id="notice" class="notice" role="status" hidden></div>
+<script defer src="js/marked.umd.js"></script>
+<script defer src="js/data.js"></script>
+<script defer src="js/view.js"></script>
+<script defer src="js/actions.js"></script>
+</body>
+</html>
