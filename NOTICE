@@ -1,0 +1,11 @@
+有据 · 可追溯科研工作台（ResearchTrace）
+Copyright 2026 有据 作者
+
+本产品基于 Apache License 2.0 发布（见根目录 LICENSE）。
+
+包含的第三方组件与许可：
+
+- marked（web/js/marked.umd.js）— MIT License，见 web/LICENSE-marked.md
+- Mozilla pdf.js（web/js/pdf.min.js、web/js/pdf.worker.min.js）— Apache License 2.0，见 web/LICENSE-pdfjs.md
+- 自托管字体 Geist、Instrument Sans、IBM Plex Mono（web/assets/fonts/）— SIL Open Font License 1.1，
+  仅包含拉丁字符子集 woff2 文件，中文文本回退到系统字体。
