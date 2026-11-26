@@ -3,7 +3,7 @@
 const storageKey = 'research-bench-v1';
 const pages = [
   ['home', '课题总览', '⌂'], ['papers', '文献库', '▤'], ['hypotheses', '研究设计', '◇'],
-  ['runs', '实验与数据', '⌗'], ['evidence', '对照与证据', '↔'], ['claims', '结论核对', '✓'], ['drafts', '论文写作', '¶'], ['notes', '科研日志', '≡']
+  ['runs', '实验与数据', '⌗'], ['evidence', '对照与证据', '↔'], ['claims', '结论核对', '✓'], ['trace', '证据链', '⛓'], ['drafts', '论文写作', '¶'], ['notes', '科研日志', '≡']
 ];
 const metricNames = { accuracy: '准确率', macro_f1: '宏平均 F1', rmse: 'RMSE', latency_ms: '延迟（ms）' };
 const paperStatuses = ['待读', '阅读中', '已整理'];
@@ -24,9 +24,9 @@ function sampleProject() {
     '固定官方测试集，对照 MiniRocket 基线与不同升级预算下的路由结果。');
   p.demo = true;
   p.papers = [
-    {id: 'paper-mini', key: 'dempster2020minirocket', title: 'MINIROCKET: A Very Fast (Almost) Deterministic Transform for Time Series Classification', authors: 'Angus Dempster and Daniel F. Schmidt and Geoffrey I. Webb', year: '2020', doi: '10.48550/arXiv.2012.08791', status: '已整理', method: 'MiniRocket 特征变换与线性分类器。', note: '用于建立快速基线。阅读笔记需标清论文评估条件与自己的划分。'},
-    {id: 'paper-rocket', key: 'dempster2019rocket', title: 'ROCKET: Exceptionally fast and accurate time series classification using random convolutional kernels', authors: 'Angus Dempster and François Petitjean and Geoffrey I. Webb', year: '2019', doi: '10.48550/arXiv.1910.13051', status: '阅读中', method: '随机卷积核变换。', note: '可作为升级分支的对照来源。'},
-    {id: 'paper-ucr', key: 'dau2018ucr', title: 'The UCR Time Series Archive', authors: 'Hoang Anh Dau and Anthony Bagnall and Kaveh Kamgar and Chin-Chia Michael Yeh and Yan Zhu and Shaghayegh Gharghabi and Chotirat Ann Ratanamahatana and Eamonn Keogh', year: '2018', doi: '10.48550/arXiv.1810.07758', status: '已整理', method: '时间序列分类档案与基准。', note: '记录每个数据集具体使用的划分和版本。'}
+    {id: 'paper-mini', key: 'dempster2020minirocket', title: 'MINIROCKET: A Very Fast (Almost) Deterministic Transform for Time Series Classification', authors: 'Angus Dempster and Daniel F. Schmidt and Geoffrey I. Webb', year: '2020', doi: '10.48550/arXiv.2012.08791', status: '已整理', method: 'MiniRocket 特征变换与线性分类器。', note: '用于建立快速基线。阅读笔记需标清论文评估条件与自己的划分。', target: 'h1'},
+    {id: 'paper-rocket', key: 'dempster2019rocket', title: 'ROCKET: Exceptionally fast and accurate time series classification using random convolutional kernels', authors: 'Angus Dempster and François Petitjean and Geoffrey I. Webb', year: '2019', doi: '10.48550/arXiv.1910.13051', status: '阅读中', method: '随机卷积核变换。', note: '可作为升级分支的对照来源。', target: 'h2'},
+    {id: 'paper-ucr', key: 'dau2018ucr', title: 'The UCR Time Series Archive', authors: 'Hoang Anh Dau and Anthony Bagnall and Kaveh Kamgar and Chin-Chia Michael Yeh and Yan Zhu and Shaghayegh Gharghabi and Chotirat Ann Ratanamahatana and Eamonn Keogh', year: '2018', doi: '10.48550/arXiv.1810.07758', status: '已整理', method: '时间序列分类档案与基准。', note: '记录每个数据集具体使用的划分和版本。', target: 'h1'}
   ];
   p.hypotheses = [
     {id: 'h1', title: '有限预算下的升级收益', claim: '与 MiniRocket 相比，25% 升级预算的选择性路由可能提升准确率。', metric: 'accuracy',
@@ -102,10 +102,29 @@ function localMigrationState() {
   try { const saved = JSON.parse(localStorage.getItem(storageKey)); if (validState(saved)) return saved; } catch {}
   return null;
 }
+const DEMO_SAMPLE_VERSION = 2;
 const demoStorageKey = 'research-bench-demo-v1';
+const demoSampleVersionKey = 'research-bench-demo-sample-v1';
 const demoStore = {
-  load() { try { const saved = JSON.parse(localStorage.getItem(demoStorageKey)); if (validState(saved)) return saved; } catch {} return null; },
-  save(snapshot) { try { localStorage.setItem(demoStorageKey, snapshot); return true; } catch { return false; } }
+  load() {
+    try {
+      if (localStorage.getItem(demoSampleVersionKey) !== String(DEMO_SAMPLE_VERSION)) {
+        localStorage.removeItem(demoStorageKey);
+        localStorage.removeItem(demoSampleVersionKey);
+        return null;
+      }
+      const saved = JSON.parse(localStorage.getItem(demoStorageKey));
+      if (validState(saved)) return saved;
+    } catch {}
+    return null;
+  },
+  save(snapshot) {
+    try {
+      localStorage.setItem(demoStorageKey, snapshot);
+      localStorage.setItem(demoSampleVersionKey, String(DEMO_SAMPLE_VERSION));
+      return true;
+    } catch { return false; }
+  }
 };
 const CSV_FILE_LIMIT = 2 * 1024 * 1024;
 const BACKUP_FILE_LIMIT = 3 * 1024 * 1024;
@@ -267,6 +286,66 @@ function formatValue(value, metric, delta = false) {
 }
 const claimStates = {supported:'支持',counter:'反例',below:'未达阈值',missing:'待补证据'};
 
+const tTable95 = [0,12.706,4.303,3.182,2.776,2.571,2.447,2.365,2.306,2.262,2.228,2.197,2.179,2.160,2.145,2.131,2.120,2.110,2.101,2.093,2.086,2.080,2.074,2.069,2.064,2.060,2.056,2.052,2.048,2.045,2.042];
+function tCritical95(df) {
+  if (df < 1) return null;
+  if (df <= 30) return tTable95[df];
+  return 1.96 + 2.5 / df;
+}
+function lgamma(x) {
+  const c = [676.5203681218851,-1259.1392167224028,771.32342877765313,-176.61502916214059,12.507343278686905,-0.13857109526572012,9.9843695780195716e-6,1.5056327351493116e-7];
+  if (x < 0.5) return Math.log(Math.PI / Math.sin(Math.PI * x)) - lgamma(1 - x);
+  x -= 1;
+  let a = 0.99999999999980993;
+  const t = x + 7.5;
+  for (let i = 0; i < 8; i += 1) a += c[i] / (x + i + 1);
+  return 0.5 * Math.log(2 * Math.PI) + (x + 0.5) * Math.log(t) - t + Math.log(a);
+}
+function logChoose(n, k) { return lgamma(n + 1) - lgamma(k + 1) - lgamma(n - k + 1); }
+function normalCdf(z) {
+  const t = 1 / (1 + 0.2316419 * Math.abs(z));
+  const d = 0.3989422804014327 * Math.exp(-z * z / 2);
+  let p = d * t * (0.319381530 + t * (-0.356563782 + t * (1.781477937 + t * (-1.821255978 + t * 1.330274429))));
+  return z > 0 ? 1 - p : p;
+}
+function signTestP(positives, n) {
+  if (!n) return null;
+  const m = Math.min(positives, n - positives);
+  if (n <= 1000) {
+    let sum = 0;
+    for (let i = 0; i <= m; i += 1) sum += Math.exp(logChoose(n, i) - n * Math.LN2);
+    return Math.min(1, 2 * sum);
+  }
+  const z = (Math.abs(positives - n / 2) - 0.5) / Math.sqrt(n / 4);
+  return Math.min(1, 2 * (1 - normalCdf(z)));
+}
+function pairStats(pairs, metric) {
+  const n = pairs.length;
+  if (!n) return null;
+  const lower = ['rmse','latency_ms'].includes(metric);
+  const ratio = ['accuracy','macro_f1'].includes(metric);
+  const values = pairs.map(pair => (lower ? -pair.delta : pair.delta) * (ratio ? 100 : 1));
+  const mean = values.reduce((a, b) => a + b, 0) / n;
+  let sd = null, se = null, ci = null, tCrit = null;
+  if (n >= 2) {
+    sd = Math.sqrt(values.reduce((a, b) => a + (b - mean) ** 2, 0) / (n - 1));
+    se = sd / Math.sqrt(n);
+    tCrit = tCritical95(n - 1);
+    ci = [mean - tCrit * se, mean + tCrit * se];
+  }
+  const positives = values.filter(v => v > 1e-9).length;
+  const negatives = values.filter(v => v < -1e-9).length;
+  return { n, mean, sd, se, ci, tCrit, positives, negatives, zeros: n - positives - negatives, signP: signTestP(positives, positives + negatives), lower, ratio };
+}
+function statsText(stats, metric) {
+  if (!stats) return '';
+  const unit = stats.ratio ? 'pp' : metric === 'latency_ms' ? 'ms' : '';
+  const fmt = (v, d = 2) => (v == null ? '—' : v.toFixed(stats.ratio || metric === 'latency_ms' ? d : 4) + (unit ? ' ' + unit : ''));
+  const ci = stats.ci ? fmt(stats.ci[0]) + ' ~ ' + fmt(stats.ci[1]) : '样本不足（n<2）';
+  const p = stats.signP == null ? '—' : stats.signP < 0.001 ? '<0.001' : stats.signP.toFixed(3);
+  return { n: stats.n, mean: fmt(stats.mean), ci, sd: fmt(stats.sd), p, positives: stats.positives, negatives: stats.negatives, zeros: stats.zeros };
+}
+
 function normalizeClaimRule(raw) {
   const statement = typeof raw?.statement === 'string' ? raw.statement.trim() : '';
   if (!statement || statement.length > 600) throw new Error('请填写一条 600 字符以内的论文结论。');
@@ -371,4 +450,130 @@ function reproductionRecord(p,evidence,unpaired) {
 function dateNow() {
   const date = new Date();
   return [date.getFullYear(), String(date.getMonth() + 1).padStart(2,'0'), String(date.getDate()).padStart(2,'0')].join('-');
+}
+function csvCell(value) {
+  const s = String(value ?? '');
+  return /[",\n\r]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
+}
+function improvementDisplay(value, metric) {
+  const lower = ['rmse','latency_ms'].includes(metric);
+  const ratio = ['accuracy','macro_f1'].includes(metric);
+  return (lower ? -value : value) * (ratio ? 100 : 1);
+}
+function rawImprovement(value, metric) {
+  return ['rmse','latency_ms'].includes(metric) ? -value : value;
+}
+function claimBasisText(report) {
+  if (report.basis === 'saved') return '云端已保存的运行记录' + (Number.isInteger(report.version) ? '（版本 ' + report.version + '）' : '');
+  return '演示运行记录';
+}
+function claimReportMarkdown(report) {
+  const { rows, rule } = report;
+  const supported = rows.filter(row => row.status === 'supported').length;
+  const out = ['# 结论核对报告', '',
+    '- 结论：' + markdownCell(rule.statement),
+    '- 规则：' + markdownCell(rule.base + ' → ' + rule.test) + ' · ' + metricNames[rule.metric] + ' · 改善量 > ' + rule.threshold + ' ' + claimThresholdUnit(rule.metric) + ' · 最低配对 ' + rule.minPairs + ' 组',
+    '- 判定依据：' + claimBasisText(report) + '（服务端确定性配对规则）',
+    '- 核对时间：' + (report.verifiedAt ? new Date(report.verifiedAt).toLocaleString('zh-CN', {hour12: false}) : '—'),
+    '- 总体：' + supported + ' / ' + rows.length + ' 个数据集达到规则', '',
+    '> 统计量为基于已配对运行的描述性推断（t 分布 95% 置信区间与双侧符号检验），不改变服务端判定。', ''];
+  for (const row of rows) {
+    const metric = rule.metric;
+    const stats = pairStats(row.result.pairs, metric);
+    const st = statsText(stats, metric);
+    out.push('## ' + markdownCell(row.dataset) + ' · ' + claimStates[row.status], '',
+      '- 原因：' + markdownCell(row.reason),
+      '- 配对：' + row.result.pairs.length + ' 组' + (row.improvement == null ? '' : ' · 平均改善 ' + formatValue(row.improvement, metric, true)),
+      ...(stats ? ['- 均值 ' + st.mean + ' · 95% CI ' + st.ci + ' · 标准差 ' + st.sd + ' · 符号检验 p ' + st.p + '（改善 ' + st.positives + ' / 变差 ' + st.negatives + ' / 持平 ' + st.zeros + '）'] : []), '');
+    if (row.result.pairs.length) {
+      out.push('| 种子 | 测试集 | 基线 | 实验组 | 差值 | 改善量 |', '| --- | --- | ---: | ---: | ---: | ---: |',
+        ...row.result.pairs.map(({base, test, delta}) => '| ' + [base.seed, base.split, formatValue(base.value, metric), formatValue(test.value, metric), formatValue(delta, metric, true), formatValue(rawImprovement(delta, metric), metric, true)].map(markdownCell).join(' | ') + ' |'), '',
+        '| 种子 | 测试集 | 组别 | 方法 | 来源 | 行号 | 配置 | Git 提交 |', '| --- | --- | --- | --- | --- | ---: | --- | --- |');
+      for (const {base, test} of row.result.pairs) for (const [group, run] of [['基线', base], ['实验组', test]])
+        out.push('| ' + [run.seed, run.split, group, run.method, run.source || '未记录', run.row ?? '—', run.config || '未记录', run.commit || '未记录'].map(markdownCell).join(' | ') + ' |');
+      out.push('');
+    }
+    const unpaired = [...row.result.baseOnly, ...row.result.testOnly];
+    if (unpaired.length) out.push('未配对运行 ' + unpaired.length + ' 条：' + unpaired.slice(0, 30).map(run => markdownCell(run.method + ' · seed ' + run.seed + ' · ' + run.split + '（' + (run.source || '未记录') + (run.row ? ':' + run.row : '') + '）')).join('；') + (unpaired.length > 30 ? ' …' : ''), '');
+  }
+  return out.join('\n').trim() + '\n';
+}
+function claimReportCSV(report) {
+  const { rows, rule } = report;
+  const metric = rule.metric;
+  const header = ['dataset','metric','status','seed','split','base_method','test_method','base_value','test_value','delta','improvement','threshold','base_config','base_commit','base_source','base_row','test_config','test_commit','test_source','test_row'];
+  const lines = [header.join(',')];
+  const round6 = v => Math.round(v * 1e6) / 1e6;
+  for (const row of rows) for (const {base, test, delta} of row.result.pairs) {
+    lines.push([row.dataset, metric, row.status, base.seed, base.split, base.method, test.method, base.value, test.value, round6(delta), round6(improvementDisplay(delta, metric)), rule.threshold, base.config || '', base.commit || '', base.source || '', base.row ?? '', test.config || '', test.commit || '', test.source || '', test.row ?? ''].map(csvCell).join(','));
+  }
+  return '\uFEFF' + lines.join('\r\n') + '\r\n';
+}
+function traceModel(p, anchor) {
+  if (anchor === 'claim') {
+    const rule = p.claimRule;
+    if (!rule) return null;
+    const assessment = claimAssessment(p.runs, rule);
+    return { kind: 'claim', title: '结论核对规则', statement: rule.statement,
+      meta: [rule.base + ' → ' + rule.test, metricNames[rule.metric], '改善量 > ' + rule.threshold + ' ' + claimThresholdUnit(rule.metric), '最低配对 ' + rule.minPairs + ' 组'],
+      evidence: assessment.map(row => ({ title: row.dataset, subtitle: claimStates[row.status] + ' · ' + row.result.pairs.length + ' 组配对', status: row.status, mean: row.improvement, metric: rule.metric, pairs: row.result.pairs, reason: row.reason })),
+      runs: [], materials: { papers: [], notes: [], tasks: [] },
+      hint: '结论核对规则按数据集自动配对运行。如需把文献与日志纳入链路，请改用研究假设作为锚点。' };
+  }
+  if (anchor.startsWith('h:')) {
+    const h = p.hypotheses.find(item => item.id === anchor.slice(2));
+    if (!h) return null;
+    return { kind: 'hypothesis', title: h.title, statement: h.claim,
+      meta: [metricNames[h.metric], '进度 · ' + h.status, h.controls, h.criterion].filter(Boolean),
+      evidence: p.evidence.filter(e => e.target === h.id).map(e => ({ title: e.title, subtitle: e.options.dataset + ' · ' + e.options.base + ' → ' + e.options.test, metric: e.options.metric, mean: e.mean, pairs: e.pairs, note: e.note, demo: e.demo })),
+      runs: p.runs.filter(run => run.target === h.id),
+      materials: { papers: p.papers.filter(item => item.target === h.id), notes: p.notes.filter(item => item.target === h.id), tasks: p.tasks.filter(item => item.target === h.id) }, hint: '' };
+  }
+  if (anchor.startsWith('e:')) {
+    const e = p.evidence.find(item => item.id === anchor.slice(2));
+    if (!e) return null;
+    const h = p.hypotheses.find(item => item.id === e.target);
+    const target = p.hypotheses.some(item => item.id === e.target) ? e.target : '';
+    return { kind: 'evidence', title: e.title, statement: h ? h.claim : (e.note || '已存证据快照'),
+      meta: [e.options.dataset, e.options.base + ' → ' + e.options.test, metricNames[e.options.metric], '配对平均差 ' + formatValue(e.mean, e.options.metric, true)],
+      evidence: [{ title: e.title, subtitle: e.options.dataset + ' · ' + e.options.base + ' → ' + e.options.test, metric: e.options.metric, mean: e.mean, pairs: e.pairs, note: e.note, demo: e.demo }],
+      runs: [], materials: target ? { papers: p.papers.filter(item => item.target === target), notes: p.notes.filter(item => item.target === target), tasks: p.tasks.filter(item => item.target === target) } : { papers: [], notes: [], tasks: [] },
+      hint: target ? '' : '该证据未关联假设，文献与日志材料为空。可在证据编辑中设置「关联假设」。' };
+  }
+  return null;
+}
+function traceMarkdown(p, anchor) {
+  const model = traceModel(p, anchor);
+  if (!model) return '';
+  const out = ['# 证据链 · ' + markdownCell(model.title), '', '- 课题：' + markdownCell(p.title), '', '## 结论', '', markdownCell(model.statement), '',
+    ...(model.meta.length ? model.meta.map(m => '- ' + markdownCell(m)) : []), ''];
+  out.push('## 证据与配对运行', '');
+  if (!model.evidence.length) out.push('_暂无关联证据。_', '');
+  for (const ev of model.evidence) {
+    const stats = pairStats(ev.pairs, ev.metric);
+    const st = statsText(stats, ev.metric);
+    out.push('### ' + markdownCell(ev.title) + (ev.status ? ' · ' + claimStates[ev.status] : ''), '', markdownCell(ev.subtitle || ''), '');
+    if (ev.reason) out.push('- 判定原因：' + markdownCell(ev.reason));
+    if (stats) out.push('- 配对 ' + st.n + ' 组 · 均值 ' + st.mean + ' · 95% CI ' + st.ci + ' · 符号检验 p ' + st.p);
+    out.push('', '| 种子 | 测试集 | 基线 | 实验组 | 差值 |', '| --- | --- | ---: | ---: | ---: |',
+      ...ev.pairs.map(({base, test, delta}) => '| ' + [base.seed, base.split, formatValue(base.value, ev.metric), formatValue(test.value, ev.metric), formatValue(delta, ev.metric, true)].map(markdownCell).join(' | ') + ' |'), '',
+      '| 种子 | 组别 | 方法 | 来源 | 行号 | 配置 | Git 提交 |', '| --- | --- | --- | --- | ---: | --- | --- |');
+    for (const {base, test} of ev.pairs) for (const [group, run] of [['基线', base], ['实验组', test]])
+      out.push('| ' + [run.seed, group, run.method, run.source || '未记录', run.row ?? '—', run.config || '未记录', run.commit || '未记录'].map(markdownCell).join(' | ') + ' |');
+    out.push('');
+  }
+  if (model.runs.length) {
+    out.push('## 直接关联的运行', '', '| 数据集 | 方法 | 种子 | 测试集 | 指标 | 值 | 来源 | 行号 |', '| --- | --- | --- | --- | --- | ---: | --- | ---: |',
+      ...model.runs.map(run => '| ' + [run.dataset, run.method, run.seed, run.split, metricNames[run.metric], formatValue(run.value, run.metric), run.source || '未记录', run.row ?? '—'].map(markdownCell).join(' | ') + ' |'), '');
+  }
+  const m = model.materials;
+  if (m.papers.length || m.notes.length || m.tasks.length) {
+    out.push('## 关联材料', '');
+    if (m.papers.length) out.push('### 文献', '', ...m.papers.map(item => '- [' + markdownCell(item.key) + '] ' + markdownCell(item.title) + (item.year ? '（' + item.year + '）' : '')), '');
+    if (m.notes.length) out.push('### 科研日志', '', ...m.notes.map(item => '- ' + markdownCell(item.date + ' · ' + item.kind + ' · ' + item.title) + '\n  ' + markdownCell(item.text)), '');
+    if (m.tasks.length) out.push('### 待办', '', ...m.tasks.map(item => '- [' + (item.status === '已完成' ? 'x' : ' ') + '] ' + markdownCell(item.title)), '');
+  }
+  if (model.hint) out.push('> ' + markdownCell(model.hint), '');
+  out.push('_链路按 数据集 + 测试集划分 + 随机种子 + 配置 + CSV 行号 锚定，可还原到原始记录。_');
+  return out.join('\n').trim() + '\n';
 }

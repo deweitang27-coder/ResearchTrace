@@ -21,8 +21,21 @@ let claimBusy = false;
 let demoMode = false;
 let accountName = '';
 let migrationPending = null;
+let traceAnchor = '';
 let messageTimer;
 const project = () => state ? (state.projects.find(item => item.id === state.active) || state.projects[0]) : null;
+const svgIcon = paths => '<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' + paths + '</svg>';
+const ICONS = {
+  home: svgIcon('<path d="M3.8 9.3 10 4l6.2 5.3"/><path d="M5.6 8.6V16h8.8V8.6"/><path d="M8.4 16v-4.2h3.2V16"/>'),
+  papers: svgIcon('<path d="M6.2 3.5h5.6L15.4 7v9.5H6.2z"/><path d="M11.6 3.5V7h3.8"/><path d="M8.6 10.2h4.4M8.6 13h3"/>'),
+  hypotheses: svgIcon('<circle cx="10" cy="10" r="6.4"/><circle cx="10" cy="10" r="2.7"/>'),
+  runs: svgIcon('<path d="M3.8 16h12.4"/><path d="M6.3 16v-4.6"/><path d="M10 16V7.4"/><path d="M13.7 16v-6.2"/>'),
+  evidence: svgIcon('<path d="M3.8 7.2h10.4"/><path d="m11.6 4.6 2.6 2.6-2.6 2.6"/><path d="M16.2 12.8H5.8"/><path d="m8.4 10.2-2.6 2.6 2.6 2.6"/>'),
+  claims: svgIcon('<circle cx="10" cy="10" r="6.4"/><path d="m7.3 10.3 1.9 1.9 3.5-3.9"/>'),
+  trace: svgIcon('<path d="m8.4 11.6 3.2-3.2"/><path d="m9.7 5.9 1.3-1.3a2.75 2.75 0 0 1 3.9 3.9l-1.3 1.3"/><path d="m10.3 14.1-1.3 1.3a2.75 2.75 0 0 1-3.9-3.9l1.3-1.3"/>'),
+  drafts: svgIcon('<path d="M4.6 15.4h10.8"/><path d="M13.6 4.4a1.75 1.75 0 0 1 2 2L9.3 12.7l-2.9.9.9-2.9z"/>'),
+  notes: svgIcon('<rect x="4.6" y="3.5" width="10.8" height="13" rx="1.6"/><path d="M7.6 7.2h4.8M7.6 10h4.8M7.6 12.8h3"/>'),
+};
 
 function html(value) {
   const entities = {'&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;'};
@@ -59,7 +72,7 @@ function renderMeta(p) {
   $('#project-choice').innerHTML = state.projects.map(item => '<option value="' + html(item.id) + '"' + (p.id === item.id ? ' selected' : '') + '>' + html(item.title) + '</option>').join('');
   const navigation = $('#navigation');
   if (!navigation.children.length) {
-    navigation.innerHTML = pages.map(([key,label,icon]) => '<button class="nav-button" type="button" data-action="page" data-value="' + key + '"><span class="nav-icon" aria-hidden="true">' + icon + '</span><span>' + label + '</span></button>').join('');
+    navigation.innerHTML = pages.map(([key,label]) => '<button class="nav-button" type="button" data-action="page" data-value="' + key + '"><span class="nav-icon" aria-hidden="true">' + (ICONS[key] || '') + '</span><span>' + label + '</span></button>').join('');
   }
   for (const button of navigation.children) {
     if (button.dataset.value === page) button.setAttribute('aria-current', 'page');
@@ -281,7 +294,7 @@ function homeView(p) {
   const counts = [['papers',p.papers.length,'文献记录'],['hypotheses',p.hypotheses.length,'研究假设'],['runs',p.runs.length,'实验运行'],['evidence',p.evidence.length,'已存证据']];
   const completed = p.tasks.length - open.length;
   return '<header class="hero"><div class="hero-graphic" aria-hidden="true"><i></i></div><div class="hero-main"><span class="hero-label"><i></i>' + (p.demo ? '内置演示课题' : '当前研究课题') + '</span><h1>' + html(p.title) + '</h1><p>' + html(p.goal || '在课题设置中填写阶段目标。') + '</p>' + actions(action('导入实验 CSV','import-csv','','hero-primary'),action('课题设置','edit','project','hero-button')) + '</div><div class="hero-aside"><small>研究问题</small><strong>' + html(p.question || '待填写') + '</strong></div></header>' +
-    '<div class="milestones">' + counts.map(([key,count,label]) => '<button class="milestone" type="button" data-action="page" data-value="' + key + '"><span class="metric-icon" aria-hidden="true">' + pages.find(([route]) => route === key)[2] + '</span><span class="metric-copy"><span class="metric-title">' + label + '</span><strong>' + count + '</strong></span><span class="metric-arrow" aria-hidden="true">↗</span></button>').join('') + '</div>' +
+    '<div class="milestones">' + counts.map(([key,count,label]) => '<button class="milestone" type="button" data-action="page" data-value="' + key + '"><span class="metric-icon" aria-hidden="true">' + (ICONS[key] || '') + '</span><span class="metric-copy"><span class="metric-title">' + label + '</span><strong>' + count + '</strong></span><span class="metric-arrow" aria-hidden="true">↗</span></button>').join('') + '</div>' +
     '<div class="overview"><section class="panel overview-result">' + section('最近的实验对照') + overviewEvidence(p.evidence.at(-1)) + '</section>' +
     '<div class="overview-side"><section class="panel overview-tasks">' + section('研究待办', action('＋ 新建','new','tasks','text')) +
     (p.tasks.length ? '<div class="task-progress"><span><strong>' + completed + ' / ' + p.tasks.length + '</strong> 已完成</span><progress max="' + p.tasks.length + '" value="' + completed + '" aria-label="研究待办完成进度"></progress></div>' : '') +
@@ -313,12 +326,12 @@ function overviewPairPreview(pair, metric) {
 function matchingItems(p, query) {
   const terms = query.toLowerCase().trim().split(/\s+/).filter(Boolean);
   const matches = text => terms.every(term => text.toLowerCase().includes(term));
-  const routes = pages.filter(([,label]) => matches(label)).map(([key,label,icon]) => ({key,label,icon,kind:'模块',page:key}));
+  const routes = pages.filter(([,label]) => matches(label)).map(([key,label]) => ({key,label,icon:ICONS[key] || '',kind:'模块',page:key}));
   if (!terms.length) return routes;
   const papers = p.papers.filter(paper => matches([paper.title,paper.authors,paper.key].join(' ')))
-    .slice(0,5).map(paper => ({key:paper.id,label:paper.title,icon:'▤',kind:'文献',page:'papers'}));
+    .slice(0,5).map(paper => ({key:paper.id,label:paper.title,icon:ICONS.papers,kind:'文献',page:'papers'}));
   const evidence = p.evidence.filter(item => matches([item.title,item.options.dataset,item.options.test].join(' ')))
-    .slice(0,5).map(item => ({key:item.id,label:item.title,icon:'↔',kind:'证据',page:'evidence'}));
+    .slice(0,5).map(item => ({key:item.id,label:item.title,icon:ICONS.evidence,kind:'证据',page:'evidence'}));
   return [...routes,...papers,...evidence].slice(0,10);
 }
 function papersList(p) {
@@ -326,11 +339,14 @@ function papersList(p) {
   const papers = p.papers.filter(item => [item.title,item.authors,item.key,item.method].some(value => value.toLowerCase().includes(query)));
   return list(papers, item => '<li><div><span class="list-title">' + html(item.title) + '</span><span class="meta">' + html([item.authors,item.year].filter(Boolean).join(' · ')) + '</span>' +
     '<p>' + html(item.method) + '</p>' + (item.note ? '<details><summary>阅读笔记</summary><p class="note-article">' + html(item.note) + '</p></details>' : '') +
+    (item.abstract || item.refs?.length ? '<details class="parse-paper"><summary>解析内容' + (item.source ? ' · ' + html(item.source) : '') + (item.pages ? ' · ' + item.pages + ' 页' : '') + '</summary>' +
+      (item.abstract ? '<p class="note-article">' + html(item.abstract) + '</p>' : '') +
+      (item.refs?.length ? '<ol class="parse-refs">' + item.refs.map(ref => '<li><span class="parse-page">第 ' + ref.page + ' 页</span>' + html(ref.text) + '</li>').join('') + '</ol>' : '') + '</details>' : '') +
     '<p class="meta"><code>' + html(item.key) + '</code> ' + (item.doi ? safeLink('https://doi.org/' + encodeURIComponent(item.doi).replace(/%2F/gi, '/'), 'DOI ↗') : '') + '</p></div><div class="stack">' +
     badge(item.status,item.status !== '已整理') + entityActions('papers',item) + '</div></li>', query ? '没有匹配的文献。' : '添加第一篇参考文献。');
 }
 function papersView(p) {
-  return heading('文献库','登记出处、提炼方法与证据，写作时用引用键插入文献。', actions(action('导出 BibTeX','export-bib'),action('添加文献','new','papers','primary'))) +
+  return heading('文献库','登记出处、提炼方法与证据，写作时用引用键插入文献。也可解析 PDF 自动入库（带页码锚点）。', actions(action('导出 BibTeX','export-bib'),action('解析文本','parse-text'),action('解析 PDF','parse-pdf'),action('添加文献','new','papers','primary'))) +
     '<section class="panel"><input type="search" id="paper-search" autocomplete="off" placeholder="搜索题名、作者或引用键" aria-label="搜索文献" value="' + html(searchPaper) + '"><div id="paper-results">' + papersList(p) + '</div></section>';
 }
 function hypothesesView(p) {
@@ -408,10 +424,16 @@ function comparisonPlot(result, metric) {
   const missing = baseOnly.length + testOnly.length;
   if (!compare.test) return '<p class="empty">同一数据集和指标下至少需要两种方法。</p>';
   if (!pairs.length) return '<p class="warn">' + (sameTest ? '测试集相同，但没有能按种子配对的运行。' : '两组记录没有共同的测试集标识，未计算配对差值。') + '</p>';
+  const rule = project()?.claimRule;
+  const matched = rule && rule.datasets.includes(compare.dataset) && rule.metric === metric && rule.base === compare.base && rule.test === compare.test;
+  const meanDisp = mean == null ? null : deltaDisplay(deltaLower(metric) ? -mean : mean, metric);
+  const plot = compareMode === 'table' ? pairTable(pairs, metric)
+    : compareMode === 'delta' ? deltaChart(pairs, metric, { key: 'pair', selected: chosenPair, mean: meanDisp, threshold: matched ? rule.threshold : null }) + statsPanel(pairStats(pairs, metric), metric)
+    : pairChart(pairs, metric, { key: 'pair', selected: chosenPair });
   return '<div class="score-band"><strong>' + html(formatValue(mean,metric,true)) + '</strong><span>配对平均差<br><small>' + pairs.length + ' 组可配对运行</small></span></div>' +
     (missing ? '<div class="warn">另有基线 ' + baseOnly.length + ' 条、实验组 ' + testOnly.length + ' 条未配对。</div>' : '') +
-    '<div class="comparison-toolbar"><div class="legend"><span>○ 基线</span><span>● 实验组</span></div>' + segmented('对照显示方式','compare-mode',[['plot','配对图'],['table','数据表']],compareMode) + '</div>' +
-    (compareMode === 'table' ? pairTable(pairs,metric) : pairChart(pairs,metric,{key:'pair',selected:chosenPair})) +
+    '<div class="comparison-toolbar">' + (compareMode === 'plot' ? '<div class="legend"><span>○ 基线</span><span>● 实验组</span></div>' : '<span class="meta">' + (compareMode === 'delta' ? '正值＝实验组更优' : '') + '</span>') + segmented('对照显示方式','compare-mode',[['plot','配对图'],['delta','改善量'],['table','数据表']],compareMode) + '</div>' +
+    plot +
     '<div class="evidence-footer"><p class="meta">共用测试集时，多种子结果用于描述运行波动。</p>' + actions(action('导出当前复现记录','export-reproduction'),action('保存这组证据','new','evidence','primary')) + '</div>';
 }
 function pairLabel(pair,metric) {
@@ -442,6 +464,159 @@ function pairChart(pairs, metric, {key,selected,limit=pairs.length}) {
       return '<button class="plot-row" type="button" aria-pressed="' + (selected === index) + '" data-action="' + key + '" data-value="' + index + '" aria-label="' + html(pairLabel(pair,metric)) + '"><span>seed ' + html(pair.base.seed) + '</span><span class="plot-track" aria-hidden="true"><i class="join" style="left:' + Math.min(a,b) + '%;width:' + Math.abs(a-b) + '%"></i><i class="point base" style="left:' + a + '%"></i><i class="point test" style="left:' + b + '%"></i></span><span>' + html(delta) + '</span></button>';
     }).join('') + '<div class="plot-axis"><span></span><span class="plot-ticks">' + Array.from({length:5},(_,i) => '<span>' + html(formatValue(min+(max-min)*i/4,metric)) + '</span>').join('') + '</span><span></span></div></div>' +
     (displayed.length < pairs.length ? '<p class="meta">显示前 ' + displayed.length + ' 组，完整结果见对照页。</p>' : '');
+}
+const deltaRatio = metric => ['accuracy','macro_f1'].includes(metric);
+const deltaLower = metric => ['rmse','latency_ms'].includes(metric);
+function deltaDisplay(value, metric) { return deltaRatio(metric) ? value * 100 : value; }
+function deltaImprovement(pair, metric) { return deltaDisplay(deltaLower(metric) ? -pair.delta : pair.delta, metric); }
+function deltaUnit(metric) { return deltaRatio(metric) ? 'pp' : metric === 'latency_ms' ? 'ms' : ''; }
+function deltaSigned(value, metric) {
+  const n = Math.abs(value) < 1e-9 ? 0 : value;
+  const digits = deltaRatio(metric) || metric === 'latency_ms' ? 2 : 4;
+  return (n > 0 ? '+' : '') + n.toFixed(digits) + (deltaUnit(metric) ? ' ' + deltaUnit(metric) : '');
+}
+function deltaTickText(value, metric) {
+  const n = Math.abs(value) < 1e-9 ? 0 : value;
+  const digits = deltaRatio(metric) || metric === 'latency_ms' ? 1 : 3;
+  return n.toFixed(digits) + (deltaUnit(metric) ? ' ' + deltaUnit(metric) : '');
+}
+function deltaDomain(values, threshold, mean, metric, ci = null) {
+  let lo = Math.min(0, ...values), hi = Math.max(0, ...values);
+  if (threshold != null) { lo = Math.min(lo, threshold); hi = Math.max(hi, threshold); }
+  if (mean != null) { lo = Math.min(lo, mean); hi = Math.max(hi, mean); }
+  if (ci) { lo = Math.min(lo, ci[0]); hi = Math.max(hi, ci[1]); }
+  const pad = (hi - lo) * .16 || (deltaRatio(metric) ? .5 : Math.abs(hi) * .12 || .1);
+  const dMin = lo - pad, dMax = hi + pad;
+  return { dMin, dMax, x: v => 100 * (v - dMin) / (dMax - dMin) };
+}
+function deltaTicks(dMin, dMax, metric) {
+  return '<div class="delta-axis"><span></span><span class="delta-ticks">' +
+    Array.from({length: 5}, (_, i) => '<span style="--tick:' + (i * 25) + '%">' + html(deltaTickText(dMin + (dMax - dMin) * i / 4, metric)) + '</span>').join('') +
+    '</span><span></span></div>';
+}
+function deltaChart(pairs, metric, {key, selected, threshold = null, mean = null, limit = pairs.length}) {
+  if (!pairs.length) return '';
+  const displayed = pairs.slice(0, limit);
+  const imps = displayed.map(pair => deltaImprovement(pair, metric));
+  const stats = pairStats(displayed, metric);
+  const ci = stats && stats.ci ? stats.ci : null;
+  const { dMin, dMax, x } = deltaDomain(imps, threshold, mean, metric, ci);
+  const zero = x(0);
+  const guides = '<i class="delta-zero" style="left:' + zero + '%"></i>' +
+    (ci ? '<i class="delta-ci" style="left:' + x(ci[0]) + '%;width:' + (x(ci[1]) - x(ci[0])) + '%" title="95% 置信区间 ' + html(deltaSigned(ci[0], metric)) + ' ~ ' + html(deltaSigned(ci[1], metric)) + '"></i>' : '') +
+    (mean != null ? '<i class="delta-mean" style="left:' + x(mean) + '%"><span>均值 ' + html(deltaSigned(mean, metric)) + '</span></i>' : '') +
+    (threshold != null && threshold > 0 ? '<i class="delta-threshold" style="left:' + x(threshold) + '%"><span>阈值 ' + html(deltaTickText(threshold, metric)) + '</span></i>' : '');
+  const rows = displayed.map((pair, index) => {
+    const v = imps[index], vp = x(v);
+    const cls = v > 1e-9 ? 'good' : v < -1e-9 ? 'bad' : 'flat';
+    return '<button class="delta-row" type="button" data-action="' + key + '" data-value="' + index + '" aria-pressed="' + (selected === index) + '" aria-label="' + html(pairLabel(pair, metric)) + '">' +
+      '<span class="delta-seed">seed ' + html(pair.base.seed) + '</span>' +
+      '<span class="delta-track" aria-hidden="true"><i class="delta-bar ' + cls + '" style="left:' + Math.min(zero, vp) + '%;width:' + Math.abs(vp - zero) + '%"></i></span>' +
+      '<span class="delta-val ' + cls + '">' + html(deltaSigned(v, metric)) + '</span></button>';
+  }).join('');
+  return '<div class="delta" role="group" aria-label="按随机种子展示' + html(metricNames[metric]) + '改善量，正值表示实验组更优">' +
+    '<div class="delta-legend"><span class="lg-good">改善</span><span class="lg-bad">变差</span>' +
+    (mean != null ? '<span class="lg-mean">均值</span>' : '') +
+    (ci ? '<span class="lg-ci">95% CI</span>' : '') +
+    (threshold != null && threshold > 0 ? '<span class="lg-threshold">阈值</span>' : '') +
+    '<span class="lg-zero">无变化</span></div>' +
+    '<div class="delta-body"><div class="delta-guides" aria-hidden="true">' + guides + '</div>' + rows + deltaTicks(dMin, dMax, metric) + '</div>' +
+    (displayed.length < pairs.length ? '<p class="meta">显示前 ' + displayed.length + ' 组，完整结果见对照页。</p>' : '') + '</div>';
+}
+function claimOverview(rows, rule) {
+  const metric = rule.metric;
+  const shown = rows.slice(0, 12);
+  const items = shown.map(row => ({ value: row.improvement == null ? null : deltaDisplay(row.improvement, metric), status: row.status }));
+  const values = items.map(item => item.value).filter(value => value != null);
+  const { dMin, dMax, x } = deltaDomain(values, rule.threshold, null, metric);
+  const zero = x(0);
+  const guides = '<i class="delta-zero" style="left:' + zero + '%"></i>' +
+    (rule.threshold > 0 ? '<i class="delta-threshold" style="left:' + x(rule.threshold) + '%"><span>阈值 ' + html(deltaTickText(rule.threshold, metric)) + '</span></i>' : '');
+  const bars = shown.map((row, index) => {
+    const value = items[index].value;
+    const cls = 'st-' + row.status;
+    const bar = value == null ? '' : '<i class="delta-bar ' + cls + '" style="left:' + Math.min(zero, x(value)) + '%;width:' + Math.abs(x(value) - zero) + '%"></i>';
+    return '<button class="delta-row overview-row" type="button" data-action="claim-select" data-value="' + index + '" aria-pressed="' + (index === claimDatasetIndex) + '" aria-label="' + html(row.dataset + '，' + claimStates[row.status] + (value == null ? '，暂无配对改善量' : '，平均改善 ' + deltaSigned(value, metric))) + '">' +
+      '<span class="delta-seed">' + html(row.dataset) + '</span>' +
+      '<span class="delta-track" aria-hidden="true">' + bar + '</span>' +
+      '<span class="delta-val ' + cls + '">' + (value == null ? '待补' : html(deltaSigned(value, metric))) + '</span></button>';
+  }).join('');
+  return '<div class="delta claim-overview" role="group" aria-label="各数据集平均改善量与阈值对比">' +
+    '<div class="delta-legend"><span class="lg-good">支持</span><span class="lg-threshold">未达阈值</span><span class="lg-bad">反例</span><span class="lg-zero">待补证据</span></div>' +
+    '<div class="delta-body"><div class="delta-guides" aria-hidden="true">' + guides + '</div>' + bars + deltaTicks(dMin, dMax, metric) + '</div>' +
+    (rows.length > shown.length ? '<p class="meta">显示前 ' + shown.length + ' 个数据集。</p>' : '') + '</div>';
+}
+function statsPanel(stats, metric) {
+  if (!stats) return '';
+  const st = statsText(stats, metric);
+  return '<div class="stats-panel" role="group" aria-label="配对描述性统计">' +
+    '<div class="stats-head"><strong>描述性统计</strong><span class="meta">基于已配对运行 · 不改变服务端判定</span></div>' +
+    '<dl class="stats-grid">' +
+    '<div><dt>配对数</dt><dd>' + st.n + '</dd></div>' +
+    '<div><dt>平均改善</dt><dd>' + html(st.mean) + '</dd></div>' +
+    '<div><dt>95% 置信区间</dt><dd>' + html(st.ci) + '</dd></div>' +
+    '<div><dt>标准差</dt><dd>' + html(st.sd) + '</dd></div>' +
+    '<div><dt>符号检验 p</dt><dd>' + html(st.p) + '</dd></div>' +
+    '<div><dt>改善 / 变差 / 持平</dt><dd>' + st.positives + ' / ' + st.negatives + ' / ' + st.zeros + '</dd></div>' +
+    '</dl>' +
+    (stats.ci ? '<p class="meta stats-note">t 分布 95% CI（df=' + (stats.n - 1) + '）；符号检验为双侧精确二项，忽略持平组。</p>' : '<p class="meta stats-note">样本不足（n&lt;2），仅给出均值与符号计数，不估计区间。</p>') +
+    '</div>';
+}
+function tracePairTable(pairs, metric) {
+  return '<div class="table-area"><table><thead><tr><th scope="col">种子</th><th scope="col">测试集</th><th scope="col" class="num">基线</th><th scope="col" class="num">实验组</th><th scope="col" class="num">差值</th><th scope="col" class="num">改善量</th></tr></thead><tbody>' +
+    pairs.map(({base, test, delta}) => '<tr><th scope="row" class="mono">' + html(base.seed) + '</th><td><code>' + html(base.split) + '</code></td><td class="num mono">' + html(formatValue(base.value, metric)) + '</td><td class="num mono">' + html(formatValue(test.value, metric)) + '</td><td class="num mono">' + html(formatValue(delta, metric, true)) + '</td><td class="num mono">' + html(formatValue(deltaLower(metric) ? -delta : delta, metric, true)) + '</td></tr>').join('') +
+    '</tbody></table></div>';
+}
+function traceProvenance(pairs) {
+  const rows = [];
+  for (const {base, test} of pairs) for (const [group, run] of [['基线', base], ['实验组', test]])
+    rows.push('<tr><th scope="row" class="mono">' + html(run.seed) + '</th><td>' + html(group) + '</td><td>' + html(run.method) + '</td><td>' + html(run.source || '未记录') + '</td><td class="num mono">' + (run.row ?? '—') + '</td><td><code>' + html(run.config || '未记录') + '</code></td><td><code>' + html(run.commit || '未记录') + '</code></td></tr>');
+  return '<div class="table-area"><table><thead><tr><th scope="col">种子</th><th scope="col">组别</th><th scope="col">方法</th><th scope="col">来源</th><th scope="col" class="num">行号</th><th scope="col">配置</th><th scope="col">Git 提交</th></tr></thead><tbody>' + rows.join('') + '</tbody></table></div>';
+}
+function traceLayer(title, marker, body) {
+  return '<section class="trace-layer"><div class="trace-node" aria-hidden="true">' + marker + '</div><div class="trace-layer-body"><h3>' + html(title) + '</h3>' + body + '</div></section>';
+}
+function traceView(p) {
+  const anchors = [];
+  if (p.claimRule) anchors.push(['claim', '结论核对规则']);
+  p.hypotheses.forEach(h => anchors.push(['h:' + h.id, h.title]));
+  p.evidence.forEach(e => anchors.push(['e:' + e.id, e.title]));
+  const head = heading('证据链', '从一条结论或假设出发，逐层追溯到配对运行与原始 CSV 行号。');
+  if (!anchors.length) return head + '<p class="empty">先登记一条研究假设或保存一组证据，即可在此查看完整证据链。</p>';
+  const anchor = anchors.some(([value]) => value === traceAnchor) ? traceAnchor : anchors[0][0];
+  const model = traceModel(p, anchor);
+  const controls = '<div class="trace-controls"><label class="field trace-anchor-field"><span>追溯锚点</span><select id="trace-anchor">' +
+    anchors.map(([value, label]) => option(value, label, value === anchor)).join('') + '</select></label>' +
+    actions(action('导出证据链', 'export-trace'), action('复制 Markdown', 'copy-trace')) + '</div>';
+  if (!model) return head + controls + '<p class="empty">该锚点已不存在，请重新选择。</p>';
+  const evidence = model.evidence.length ? model.evidence.map(ev => {
+    const stats = pairStats(ev.pairs, ev.metric);
+    return '<article class="trace-evidence' + (ev.status ? ' st-' + ev.status : '') + '">' +
+      '<header><strong>' + html(ev.title) + '</strong>' + (ev.status ? '<span class="claim-tag claim-' + ev.status + '">' + claimStates[ev.status] + '</span>' : '') + (ev.demo ? '<span class="status">演示</span>' : '') + '</header>' +
+      '<p class="meta">' + html(ev.subtitle || '') + '</p>' +
+      (ev.reason ? '<p class="meta">' + html(ev.reason) + '</p>' : '') +
+      (ev.mean != null ? '<p class="trace-mean">平均改善 <strong>' + html(formatValue(ev.mean, ev.metric, true)) + '</strong></p>' : '') +
+      statsPanel(stats, ev.metric) +
+      (ev.pairs.length ? '<details class="trace-pairs"><summary>配对运行与来源锚点（' + ev.pairs.length + ' 组）</summary>' + tracePairTable(ev.pairs, ev.metric) + traceProvenance(ev.pairs) + '</details>' : '<p class="meta">暂无可配对运行。</p>') +
+      (ev.note ? '<p class="meta trace-note">' + html(ev.note) + '</p>' : '') +
+      '</article>';
+  }).join('') : '<p class="empty">该锚点暂无关联证据。可在证据编辑中设置「关联假设」。</p>';
+  const runsTable = model.runs.length ? '<div class="table-area"><table><thead><tr><th scope="col">数据集</th><th scope="col">方法</th><th scope="col">种子</th><th scope="col">测试集</th><th scope="col">指标</th><th scope="col" class="num">值</th><th scope="col">来源</th><th scope="col" class="num">行号</th></tr></thead><tbody>' +
+    model.runs.map(run => '<tr><td>' + html(run.dataset) + '</td><td>' + html(run.method) + '</td><td class="mono">' + html(run.seed) + '</td><td><code>' + html(run.split) + '</code></td><td>' + html(metricNames[run.metric]) + '</td><td class="num mono">' + html(formatValue(run.value, run.metric)) + '</td><td>' + html(run.source || '未记录') + '</td><td class="num mono">' + (run.row ?? '—') + '</td></tr>').join('') + '</tbody></table></div>' : '';
+  const m = model.materials;
+  const materials = (m.papers.length || m.notes.length || m.tasks.length) ?
+    (m.papers.length ? '<div class="trace-material"><h4>文献</h4><ul>' + m.papers.map(item => '<li><code>' + html(item.key) + '</code> ' + html(item.title) + (item.year ? ' <span class="meta">(' + html(item.year) + ')</span>' : '') + '</li>').join('') + '</ul></div>' : '') +
+    (m.notes.length ? '<div class="trace-material"><h4>科研日志</h4><ul>' + m.notes.map(item => '<li><strong>' + html(item.title) + '</strong> <span class="meta">' + html(item.date + ' · ' + item.kind) + '</span><p>' + html(item.text) + '</p></li>').join('') + '</ul></div>' : '') +
+    (m.tasks.length ? '<div class="trace-material"><h4>待办</h4><ul>' + m.tasks.map(item => '<li><span class="status' + (item.status === '已完成' ? ' open' : '') + '">' + html(item.status) + '</span> ' + html(item.title) + '</li>').join('') + '</ul></div>' : '')
+    : '<p class="meta">暂无关联文献、日志或待办。可在各条目编辑中设置「关联假设」。</p>';
+  return head + controls +
+    (model.hint ? '<p class="meta trace-hint">' + html(model.hint) + '</p>' : '') +
+    '<div class="trace-chain">' +
+    traceLayer('结论', '①', '<div class="trace-statement"><p>' + html(model.statement) + '</p>' + (model.meta.length ? '<div class="trace-meta">' + model.meta.map(item => '<span class="chip">' + html(item) + '</span>').join('') + '</div>' : '') + '</div>') +
+    traceLayer('证据与配对运行', '②', evidence) +
+    (model.runs.length ? traceLayer('直接关联的运行', '③', runsTable) : '') +
+    traceLayer('关联材料', model.runs.length ? '④' : '③', materials) +
+    '</div>';
 }
 function evidenceView(p) {
   const controls = comparisonControls(p);
@@ -539,6 +714,8 @@ function claimResults(rows,rule,report) {
   return '<div class="claim-judgment' + (counters.length ? ' claim-has-counter' : '') + '"><strong>' + headline + '</strong><span>' + supported.length + ' / ' + rows.length + ' 个数据集达到规则</span></div>' +
     (basis ? '<p class="meta claim-basis">' + html(basis + (verifiedAt ? ' · ' + verifiedAt : '')) + '</p>' : '') +
     '<p class="claim-statement">' + html(rule.statement) + '</p><p class="meta claim-tested-rule">' + html(rule.base + ' → ' + rule.test + ' · ' + metricNames[rule.metric] + ' · 改善量 > ' + rule.threshold + ' ' + claimThresholdUnit(rule.metric)) + '</p>' +
+    claimOverview(rows, rule) +
+    '<div class="claim-export">' + actions(action('导出 Markdown 报告', 'export-claim-md'), action('导出配对 CSV', 'export-claim-csv')) + '<span class="meta">报告含来源行号、配置、Git 提交与描述性统计</span></div>' +
     '<div class="claim-result-list" role="group" aria-label="按数据集查看核对详情">' + rows.map((row,index) => '<button class="claim-result-row" type="button" data-action="claim-select" data-value="' + index + '" aria-pressed="' + (index === claimDatasetIndex) + '"><span><strong>' + html(row.dataset) + '</strong><small>' + row.result.pairs.length + ' 组配对' + (row.improvement === null ? '' : ' · ' + html(formatValue(row.improvement,rule.metric,true))) + '</small></span><span class="claim-tag claim-' + row.status + '">' + claimStates[row.status] + '</span></button>').join('') + '</div>' +
     '<div id="claim-detail" class="claim-detail" aria-live="polite">' + claimDetail(rows[claimDatasetIndex],rule) + '</div>' +
     (supported.length && supported.length < rows.length ? '<div class="claim-reword"><strong>可收窄的表述</strong><p>在 ' + html(supported.map(row => row.dataset).join('、')) + ' 的已配对运行中，' + html(rule.test) + ' 相对 ' + html(rule.base) + ' 的' + html(metricNames[rule.metric]) + '平均改善量超过 ' + html(rule.threshold + ' ' + claimThresholdUnit(rule.metric)) + '。</p></div>' : '') +
@@ -549,9 +726,10 @@ function claimDetail(row,rule) {
   const {result} = row;
   const unpaired = [...result.baseOnly,...result.testOnly];
   return '<div class="section-heading"><h3>' + html(row.dataset) + ' · 运行来源</h3></div><p class="meta">' + html(row.reason) + '</p>' +
+    (result.pairs.length ? deltaChart(result.pairs, rule.metric, { key: 'claim-pair', selected: 0, mean: row.improvement == null ? null : deltaDisplay(row.improvement, rule.metric), threshold: rule.threshold }) + statsPanel(pairStats(result.pairs, rule.metric), rule.metric) : '') +
     (result.pairs.length ? '<label class="field claim-pair-picker"><span>查看配对</span><select id="claim-pair-choice">' + result.pairs.map((pair,index) => option(index,'seed ' + pair.base.seed + ' · ' + pair.base.split,index === 0)).join('') + '</select></label><div id="claim-pair-detail">' + pairDetails(result.pairs[0],rule.metric) + '</div>' : '') +
     (unpaired.length ? '<details class="claim-unpaired"' + (!result.pairs.length ? ' open' : '') + '><summary>查看 ' + unpaired.length + ' 条未配对运行</summary>' + list(unpaired.slice(0,20),run => '<li><div><span class="list-title">' + html(run.method + ' · seed ' + run.seed) + '</span><code>' + html(run.split) + '</code><br><span class="meta">配置 ' + html(run.config || '未记录') + ' · 来源 ' + html(run.source || '未记录') + (run.row ? ':' + run.row : '') + '</span></div></li>','') +
       (unpaired.length > 20 ? '<p class="meta">显示前 20 条。</p>' : '') + '</details>' : '');
 }
 
-const views = {home:homeView,papers:papersView,hypotheses:hypothesesView,runs:runsView,evidence:evidenceView,claims:claimsView,drafts:draftsView,notes:notesView};
+const views = {home:homeView,papers:papersView,hypotheses:hypothesesView,runs:runsView,evidence:evidenceView,claims:claimsView,trace:traceView,drafts:draftsView,notes:notesView};

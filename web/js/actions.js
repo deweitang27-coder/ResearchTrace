@@ -5,6 +5,8 @@ const quickDialog = $('#quick-search');
 const quickQuery = $('#quick-query');
 const quickResults = $('#quick-results');
 const csvDialog = $('#csv-preview');
+const parseDialog = $('#parse-preview');
+let stagedParse;
 let quickMatches = [];
 const themeKey = 'research-bench-theme';
 const metricOptions = Object.entries(metricNames);
@@ -14,7 +16,7 @@ const fields = {
   ],
   papers: [
     ['title','题名','text',true,true],['key','引用键','text',true],['year','年份','text'],['authors','作者（BibTeX 中用 and 分隔）','text',false,true],
-    ['doi','DOI','text'],['status','阅读进度','select',true,paperStatuses],['method','主要方法 / 可复用设计','area'],['note','阅读笔记 / 局限','area']
+    ['doi','DOI','text'],['status','阅读进度','select',true,paperStatuses],['target','关联假设','target'],['method','主要方法 / 可复用设计','area'],['note','阅读笔记 / 局限','area']
   ],
   hypotheses: [
     ['title','假设名称','text',true,true],['claim','假设陈述','area',true],['metric','主指标','select',true,metricOptions],
@@ -143,6 +145,7 @@ function selectProject(projectID) {
   claimReport = null;
   claimBusy = false;
   runPage = 0;
+  traceAnchor = '';
 }
 function remove(kind, itemId) {
   const p = project();
@@ -151,7 +154,7 @@ function remove(kind, itemId) {
   if (!item) return;
   if (!window.confirm('删除这条' + labels[kind] + '记录？')) return;
   data.splice(data.indexOf(item),1);
-  if (kind === 'hypotheses') for (const key of ['runs','evidence','notes','tasks']) p[key].forEach(row => { if (row.target === itemId) row.target = ''; });
+  if (kind === 'hypotheses') for (const key of ['runs','evidence','notes','tasks','papers']) p[key].forEach(row => { if (row.target === itemId) row.target = ''; });
   save();
   render();
   notice('已删除。');
@@ -167,7 +170,10 @@ function download(filename, text, mime = 'text/plain') {
 function loadFile(kind) {
   fileReadGeneration += 1;
   fileAction = kind;
-  filePicker.accept = kind === 'csv' ? '.csv,text/csv' : '.json,application/json';
+  filePicker.accept = kind === 'csv' ? '.csv,text/csv'
+    : kind === 'pdf' ? '.pdf,application/pdf'
+    : kind === 'text' ? '.txt,.md,.log,text/plain,text/markdown'
+    : '.json,application/json';
   filePicker.value = '';
   filePicker.click();
 }
@@ -258,6 +264,11 @@ function requireProjectFile(raw) {
       const failure = fieldError(kind,item,copy,null);
       if (failure) throw new Error('备份中的' + labels[kind] + '记录无效。' + failure);
       if (kind === 'runs') Object.assign(item,{source:String(data.source ?? ''),row:Number.isInteger(data.row) ? data.row : null});
+      if (kind === 'papers') Object.assign(item,{
+        source:String(data.source ?? ''), pages:Number.isInteger(data.pages) ? data.pages : 0,
+        abstract:String(data.abstract ?? ''), abstractPage:Number.isInteger(data.abstractPage) ? data.abstractPage : null,
+        refs:Array.isArray(data.refs) ? data.refs.filter(ref => ref && typeof ref.text === 'string').map(ref => ({text:ref.text.slice(0,300),page:Number.isInteger(ref.page) ? ref.page : 0})) : []
+      });
       if (kind === 'evidence') {
         if (!data.options || !Array.isArray(data.pairs) || !data.pairs.length) throw new Error('备份中的证据没有运行记录。');
         const pairs = data.pairs.map(pair => {
@@ -286,6 +297,23 @@ async function importFile() {
   try {
     if (kind === 'csv' && file.size > CSV_FILE_LIMIT) throw new Error('CSV 超过 2 MB。云端工作区上限为 4 MB，请分批导入。');
     if (kind === 'backup' && file.size > BACKUP_FILE_LIMIT) throw new Error('备份超过 3 MB。云端工作区上限为 4 MB，请拆分课题。');
+    if (kind === 'pdf') {
+      if (file.size > PDF_PARSE_LIMIT) throw new Error('PDF 超过 20 MB，请拆分或压缩后再解析。');
+      stageParseLoading(file.name, p);
+      const result = await parsePdfFile(file, (done, total) => {
+        if (readGeneration === fileReadGeneration) $('#parse-message').textContent = '正在提取第 ' + done + ' / ' + total + ' 页文本…';
+      });
+      if (readGeneration !== fileReadGeneration) return;
+      stageParse(result, p);
+      return;
+    }
+    if (kind === 'text') {
+      if (file.size > TEXT_PARSE_LIMIT) throw new Error('文本文件超过 1 MB，请拆分后再解析。');
+      const result = await parseTextFile(file);
+      if (readGeneration !== fileReadGeneration) return;
+      stageParse(result, p);
+      return;
+    }
     const text = await file.text();
     if (readGeneration !== fileReadGeneration) return;
     if (kind === 'csv') {
@@ -303,7 +331,91 @@ async function importFile() {
   } catch (error) {
     if (readGeneration !== fileReadGeneration) return;
     if (kind === 'csv') stageCsvImport(file.name,p,'',error.message);
+    else if (kind === 'pdf' || kind === 'text') stageParseError(file.name, p, error.message);
     else notice(error.message);
+  }
+}
+function stageParseLoading(fileName, destination) {
+  stagedParse = { fileName, project: destination, result: null, error: '' };
+  $('#parse-title').textContent = '解析 PDF';
+  $('#parse-filename').textContent = fileName + ' · ' + destination.title;
+  $('#parse-content').innerHTML = '<p class="claim-loading"><span class="boot-spinner" aria-hidden="true"></span>正在浏览器中提取 PDF 文本层…</p>';
+  $('#parse-message').textContent = '文本提取在本地完成，不会上传原始文件。';
+  $('#parse-confirm').disabled = true;
+  $('#parse-copy').hidden = true;
+  if (!parseDialog.open) parseDialog.showModal();
+}
+function stageParseError(fileName, destination, message) {
+  stagedParse = { fileName, project: destination, result: null, error: message };
+  $('#parse-title').textContent = '文件解析';
+  $('#parse-filename').textContent = fileName + ' · ' + destination.title;
+  $('#parse-content').innerHTML = '<p class="warn" role="alert">' + html(message) + '</p>';
+  $('#parse-message').textContent = '未写入任何记录，可更换文件后重试。';
+  $('#parse-confirm').disabled = true;
+  $('#parse-copy').hidden = true;
+  if (!parseDialog.open) parseDialog.showModal();
+}
+function stageParse(result, destination) {
+  stagedParse = { fileName: result.filename, project: destination, result, error: '' };
+  $('#parse-title').textContent = result.kind === 'pdf' ? '解析 PDF · 入文献库' : '解析文本 · 存科研日志';
+  $('#parse-filename').textContent = result.filename + ' · ' + destination.title;
+  $('#parse-content').innerHTML = parsePreviewView(result);
+  $('#parse-confirm').disabled = false;
+  $('#parse-confirm').textContent = result.kind === 'pdf' ? '加入文献库' : '存为科研日志';
+  $('#parse-copy').hidden = result.kind !== 'text';
+  $('#parse-message').textContent = result.kind === 'pdf'
+    ? '核对识别出的题名、作者与引用键后入库；摘要与参考文献带页码，可追溯原文。'
+    : '确认后将全文（至上限）保存为一条科研日志。';
+  if (!parseDialog.open) parseDialog.showModal();
+}
+function parseField(name) {
+  return parseDialog.querySelector('[name="' + name + '"]')?.value.trim() || '';
+}
+async function confirmParse() {
+  if (!parseDialog.open || !stagedParse?.result) return;
+  const { result, project: destination } = stagedParse;
+  if (project() !== destination) {
+    $('#parse-message').textContent = '当前课题已变化，请重新选择文件解析。';
+    $('#parse-confirm').disabled = true;
+    return;
+  }
+  if (result.kind === 'pdf') {
+    const title = parseField('parse-title');
+    const key = parseField('parse-key');
+    if (!title) { $('#parse-message').textContent = '请填写题名。'; return; }
+    if (!key) { $('#parse-message').textContent = '请填写引用键。'; return; }
+    if (destination.papers.some(item => item.key === key)) { $('#parse-message').textContent = '引用键「' + key + '」已存在，请改一个。'; return; }
+    const meta = result.meta;
+    destination.papers.push({
+      id: id(), title, key, year: parseField('parse-year'), authors: parseField('parse-authors'),
+      doi: parseField('parse-doi'), status: '待读', method: '',
+      note: meta.abstract ? '摘要（第 ' + (meta.abstractPage || 1) + ' 页）：' + meta.abstract : '',
+      source: result.filename, pages: result.pageCount, abstract: meta.abstract,
+      abstractPage: meta.abstractPage, refs: meta.refs
+    });
+    save();
+    parseDialog.close();
+    stagedParse = undefined;
+    page = 'papers'; searchPaper = title; render(); window.scrollTo(0, 0);
+    notice('已把「' + title + '」加入文献库，含 ' + meta.refs.length + ' 条带页码参考文献。');
+    return;
+  }
+  const kind = parseField('parse-note-kind') || '讨论纪要';
+  const text = result.text.slice(0, NOTE_TEXT_CAP);
+  destination.notes.push({ id: id(), title: result.filename, date: dateNow(), kind, target: hypothesisFilter, text });
+  save();
+  parseDialog.close();
+  stagedParse = undefined;
+  page = 'notes'; render(); window.scrollTo(0, 0);
+  notice('已把「' + result.filename + '」存为科研日志' + (result.chars > NOTE_TEXT_CAP ? '（全文超过上限，已截断）' : '') + '。');
+}
+async function copyParseText() {
+  if (!stagedParse?.result || stagedParse.result.kind !== 'text') return;
+  try {
+    await navigator.clipboard.writeText(stagedParse.result.text);
+    notice('已复制全文到剪贴板。');
+  } catch {
+    $('#parse-message').textContent = '浏览器拒绝了剪贴板访问，请手动选择文本复制。';
   }
 }
 function draftExport(p) {
@@ -355,7 +467,7 @@ function editRunDelete() {
 function updateQuickResults() {
   quickMatches = matchingItems(project(),quickQuery.value);
   quickResults.innerHTML = quickMatches.length ? quickMatches.map((item,index) =>
-    '<button class="quick-result" type="button" data-action="quick-pick" data-value="' + index + '"><span class="quick-result-icon" aria-hidden="true">' + html(item.icon) + '</span><span>' + html(item.label) + '</span><small>' + html(item.kind) + '</small></button>'
+    '<button class="quick-result" type="button" data-action="quick-pick" data-value="' + index + '"><span class="quick-result-icon" aria-hidden="true">' + item.icon + '</span><span>' + html(item.label) + '</span><small>' + html(item.kind) + '</small></button>'
   ).join('') : '<p class="empty" role="status">没有找到匹配项。</p>';
 }
 
@@ -455,6 +567,16 @@ document.addEventListener('click',event => {
       $('#claim-detail').innerHTML = claimDetail(claimReport.rows[claimDatasetIndex],claimReport.rule);
       break;
     }
+    case 'claim-pair': {
+      if (!claimReport) break;
+      const row = claimReport.rows[claimDatasetIndex];
+      const index = Number(value);
+      const choice = $('#claim-pair-choice');
+      if (choice) choice.value = String(index);
+      markPairSelected('claim-pair',button);
+      $('#claim-pair-detail').innerHTML = pairDetails(row.result.pairs[index],claimReport.rule.metric);
+      break;
+    }
     case 'toggle-theme': setTheme(document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark',true); break;
     case 'linked':
       hypothesisFilter = itemId; searchRun = ''; runPage = 0; page = kind; render(); break;
@@ -518,9 +640,33 @@ document.addEventListener('click',event => {
     case 'export-bib': download('references.bib',bibtex(p.papers)); break;
     case 'export-draft': download('manuscript.md',draftExport(p),'text/markdown'); break;
     case 'export-reproduction': exportReproduction(p,value); break;
+    case 'export-claim-md':
+      if (claimReport) { download('claim-report.md',claimReportMarkdown(claimReport),'text/markdown'); notice('已导出核对报告（Markdown）。'); }
+      break;
+    case 'export-claim-csv':
+      if (claimReport) { download('claim-pairs.csv',claimReportCSV(claimReport),'text/csv'); notice('已导出配对明细（CSV）。'); }
+      break;
+    case 'export-trace': {
+      const anchor = $('#trace-anchor')?.value || '';
+      const text = traceMarkdown(p,anchor);
+      if (text) { download('evidence-chain.md',text,'text/markdown'); notice('已导出证据链（Markdown）。'); }
+      break;
+    }
+    case 'copy-trace': {
+      const anchor = $('#trace-anchor')?.value || '';
+      const text = traceMarkdown(p,anchor);
+      if (!text) break;
+      navigator.clipboard.writeText(text).then(() => notice('已复制证据链 Markdown。')).catch(() => { download('evidence-chain.md',text,'text/markdown'); notice('剪贴板不可用，已改为下载。'); });
+      break;
+    }
     case 'backup-project': download('research-project.json',JSON.stringify({version:1,project:p},null,2),'application/json'); break;
     case 'restore-project': loadFile('backup'); break;
     case 'import-csv': loadFile('csv'); break;
+    case 'parse-pdf': loadFile('pdf'); break;
+    case 'parse-text': loadFile('text'); break;
+    case 'close-parse': parseDialog.close(); break;
+    case 'confirm-parse': confirmParse(); break;
+    case 'copy-parse': copyParseText(); break;
     case 'close-csv': csvDialog.close(); break;
     case 'confirm-csv': confirmCsvImport(); break;
     case 'csv-tab': {
@@ -539,7 +685,13 @@ document.addEventListener('change',event => {
   if (event.target.id === 'claim-pair-choice') {
     if (!claimReport) return;
     const row = claimReport.rows[claimDatasetIndex];
-    $('#claim-pair-detail').innerHTML = pairDetails(row.result.pairs[Number(event.target.value)],claimReport.rule.metric);
+    const index = Number(event.target.value);
+    $('#claim-pair-detail').innerHTML = pairDetails(row.result.pairs[index],claimReport.rule.metric);
+    const chartRow = root.querySelector('[data-action="claim-pair"][data-value="' + index + '"]');
+    if (chartRow) markPairSelected('claim-pair',chartRow);
+  }
+  if (event.target.id === 'trace-anchor') {
+    traceAnchor = event.target.value; render(); $('#trace-anchor')?.focus();
   }
   if (event.target.id === 'project-choice') {
     selectProject(event.target.value); save(); render();
